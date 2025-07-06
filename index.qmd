@@ -1,26 +1,1918 @@
 ---
-title: "report"
-format: html
+title: "<br> HFMD 2023 outbreak in Ho Chi Minh City"
+author: 'Nguyen Pham Nguyen The'
+date: last-modified
+date-format: "MM-DD-YYYY"
+title-block-banner: "#002147"
+format:
+  html:
+    toc: true
+    toc-location: left
+    toc-title: Summary
+    code-fold: true
+    number-sections: true
 editor: visual
+message: false
+warning: false
+echo: false
+bibliography: references.bib
 ---
 
-## Quarto
-
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
-
-## Running Code
-
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+------------------------------------------------------------------------
 
 ```{r}
-1 + 1
+library(readxl)
+library(tidyverse)
+library(gtsummary)
+library(patchwork)
+library(lubridate)
+library(stringr)
+library(mgcv)
+library(janitor)
+library(predtools)
+library(magrittr)
+library(slider)
+library(paletteer)
+library(odin)
+library(tsiR)
+invisible(Sys.setlocale("LC_TIME", "English"))
 ```
-
-You can add options to executable code like this
 
 ```{r}
-#| echo: false
-2 * 2
+
+## case data
+df1 <- read_excel("D:/OUCRU/hfmd/data/TCM_full.xlsx", 
+    col_types = c("date", "numeric", "text", 
+        "text", "text", "date", "date", "date", 
+        "text", "text", "text"))
+colnames(df1) <- c("dob", "age", "gender", "commune", "district",
+                  "reported_date", "onset_date","adm_date",
+                  "medi_cen","inout","severity")
+df1$dob <- df1$dob %>% as_date()
+df1$adm_date <- df1$adm_date %>% as_date()
+
+df1$age1 <- interval(df1$dob, df1$adm_date) / years(1)
+df1$adm_week <- as.Date(floor_date(df1$adm_date, "week"))
+df1$district <- df1$district %>% str_replace_all(
+          c( "Quận Gò vấp"  = "Quận Gò Vấp"))
+df1$district <- df1$district %>% 
+  str_remove("Quận|Huyện|Thành phố") %>%
+  trimws(which = "both") 
+
+## serological data
+
+apr_2023 <- read_excel("D:/OUCRU/hfmd/data/4_2023.xlsx")
+aug_2023 <- read_excel("D:/OUCRU/hfmd/data/08_2023.xlsx")
+dec_2022 <- read_excel("D:/OUCRU/hfmd/data/12_2022.xls")
+dec_2023 <- read_excel("D:/OUCRU/hfmd/data/12_2023.xlsx")
+
+t423 <- data.frame(apr_2023[-c(1,2),c(6,8,10:14)])
+t423$pos <- replace(t423$...14,is.na(t423$...14),0) %>%
+  str_detect(regex(paste(2^(4:10), collapse = "|"))) %>%
+  as.integer(as.logical())
+colnames(t423) <- c("id","age_gr","age","col_day","col_month","col_year","neutralization","pos")
+t423$age <- as.numeric(t423$age)
+t423$col_time <- rep("Apr 2023",nrow(t423))
+
+
+t823 <- data.frame(aug_2023[-c(1,2),c(6,8,9,14:17)])
+t823$pos <- str_detect(t823$...17,regex(paste(2^(4:10), collapse = "|"))) %>%
+  as.integer(as.logical())
+colnames(t823) <- c("id","age_gr","age","col_day","col_month","col_year","neutralization","pos")
+t823$age <- as.numeric(t823$age)
+t823$col_time <- rep("Aug 2023",nrow(t823))
+
+t1222 <- data.frame(dec_2022[-c(1,2),c(6,8,10:14)])
+t1222$pos <- replace(t1222$...14,is.na(t1222$...14),0) %>%
+  str_detect(regex(paste(2^(4:10), collapse = "|"))) %>%
+  as.integer(as.logical())
+colnames(t1222) <- c("id","age_gr","age","col_day","col_month","col_year","neutralization","pos")
+t1222$age <- as.numeric(t1222$age)
+t1222$col_time <- rep("Dec 2022",nrow(t1222))
+
+
+t1223 <- data.frame(dec_2023[-c(1,2),c(6,8,9,14:17)])
+t1223$pos <- replace(t1223$...17,is.na(t1223$...17),0) %>%
+  str_detect(regex(paste(2^(4:10), collapse = "|"))) %>%
+  as.integer(as.logical())
+colnames(t1223) <- c("id","age_gr","age","col_day","col_month","col_year","neutralization","pos")
+t1223$age <- as.numeric(t1223$age)
+t1223$col_time <- rep("Dec 2023",nrow(t1223))
+
+## census data
+
+census2019 <- readRDS("D:/OUCRU/hfmd/data/census2019.rds")
+
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+```{r}
+
+## function
+
+slide_age <- function(time1,age1,w1,s1){
+  df1 <- data.frame(time1,age1) %>%                   ## line listing data frame
+    filter(!is.na(time1) & !is.na(age1)) %>%
+    arrange(time1)
+
+  a_df1 <- df1 %>% count(time1)                      ## aggregate data frame
+
+  total1 <- nrow(a_df1)
+  spots1 <- seq(from = 1, to = (total1 - w1 + 1), by = s1)
+
+  out_total <- data.frame()
+
+  for (i in 1:length(spots1)){
+    range1 <- data.frame(a_df1[spots1[i]:(spots1[i] + w1 - 1),1])
+    result1 <- df1$age1[df1$time1 >= range1[1,] & df1$time1 <= range1[w1,]]
+    out <- data.frame(date = rep(as.character(range1[ceiling(w1/2),]),length(result1)),
+                      age = result1)
+    out <- out[order(out$age),]
+    out_total <- rbind(out_total,out)
+  }
+  output <- list()
+  output$wdat <- out_total
+  output$adat <- out_total %>% count(date)
+  output$parms <- data.frame(w = w1,s =s1)
+  return(output)
+}
+```
+
+## Background
+
+A hand-foot-and-mouth disease (HFMD) severe outbreak stroke Ho Chi Minh in 2023, with two successive peaks in incidence in July and September. Laboratory analyses showed that both peaks were caused by enterovirus A71 (EV-A71) subgenogroup B5 lineage.
+
+```{r}
+#| fig-width: 14
+#| fig-height: 7
+#| out-width: "100%"
+#| fig-format: png
+
+df1 %>% filter(year(adm_date) == 2023) %>% 
+  group_by(adm_date) %>% 
+  ggplot(aes(x = adm_week))+
+  geom_bar(stat = "count")+
+  theme_minimal()+
+  scale_y_continuous(limits = c(0,3000))+
+  labs(x = "Admission week", y = "Cases")+
+      theme(axis.title.y = element_text(size = 18),
+            axis.title.x = element_text(size = 18),
+            axis.text.x = element_text(size = 18),
+            axis.text.y = element_text(size = 18),
+            legend.text = element_text(size = 18),
+            legend.title = element_text(size = 18))
+```
+
+We consider 3 hypotheses that could explain this pattern:
+
+-   The peaks were caused by cases from locations
+
+-   The 2 successive peaks reflected the spread of the virus across age classes
+
+-   The period from July to August coincides with summer break characterized by a drop in the contact rate.
+
+## Data analysis
+
+### Data structure
+
+From January to December 2023, a total of 43,372 HFMD cases were reported in Ho Chi Minh City.
+
+```{r}
+
+df1$gender <- df1$gender %>% str_replace_all(
+  c( "nam|NAM|Nam"  = "Male",
+     "nữ|NỮ|Nữ"  = "Female"))
+
+df1$inout <- df1$inout %>% str_replace_all(
+  c( "Chuyển viện"  = "Transfer",
+     "Điều trị nội trú"  = "Inpatient",
+     "Điều trị ngoại trú"  = "Outpatient",
+     "Ra viện" = "Discharge",
+     "Tình trạng khác" = "Others",
+     "Tử vong" = "Death"
+     ))
+
+df1 %>% mutate(year = year(adm_date)) %>% 
+  tbl_summary(by = year,
+              label = c(age1 ~ "Age",
+                        gender ~ "Gender"),
+              statistic = list(
+                age1 ~ "{median} ({p5}, {p95})",
+                c(gender) ~ c( "{n} ({p}%)")
+              ),
+              missing = "no",
+              include = c(age1,gender))  %>%
+  bold_labels()
+```
+
+### Hypothesis 1: The peaks were caused by cases from locations
+
+We looked at epicurves per commune and/or district (i.e. whether some locations have the first peak only and some other locations have the second peak only)
+
+```{r}
+#| fig-width: 10
+#| fig-height: 12
+#| out-width: "100%"
+#| fig-format: png
+#| fig-cap: "Epidemic curve by admission date for 22 districts in Ho Chi Minh City."
+
+## extract data
+spa_df <- df1[,c("district","adm_date","adm_week")] %>% na.omit()
+
+spa_df$day <- day(spa_df$adm_date)
+spa_df$month <- month(spa_df$adm_date)
+spa_df$year <- year(spa_df$adm_date)
+
+## plot
+spa_df %>% 
+  filter(year == 2023) %>% group_by(year,month,day) %>%
+  count(district) %>% 
+  mutate(datetime = lubridate::make_datetime(2023, month,day)) %>% 
+  ggplot(aes(x = datetime, y = n)) + geom_line() +
+  scale_x_datetime(breaks = lubridate::make_datetime(2023,1:12),labels = month.abb)+
+  facet_wrap(~district,ncol = 4)+
+  theme_bw()+
+  xlab("Addmission date (day)")+
+  ylab("Cases")+
+  ylim(0,50)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1,size = 10),
+        axis.text.y = element_text(size = 18),
+        axis.title.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        strip.text = element_text(size = 15))
+```
+
+::: {.callout-note title="Conclusion"}
+All districts exhibited a two-peak epidemic curve, so we rejected this hypothesis.
+:::
+
+### Hypothesis 2: The 2 successive peaks reflected the spread of the virus across age classes
+
+We looked at the age distribution of cases as a function of time and space (commune or district). In this analysis we considered 2 options to deal with time: either as a continuous variable, or as a binary variable (first peak vs second peak).
+
+Age density was estimated using kernel density estimation with Gaussian kernel density estimator, as follows:
+
+$$
+\hat{f}_x(h) = \frac{1}{n h \sigma \sqrt{2\pi}} \sum_{i=1}^{n} \exp\left( -\frac{(x - x_i)^2}{2 h^2 \sigma^2} \right)
+$$
+
+Where n is the sample size, h is the bandwidth, and σ is the standard deviation of the sample. We follow Silverman's “rule of thumb” for choosing the bandwidth of a Gaussian kernel density estimator [@silverman2018].
+
+$$
+h = 0.9An^{\frac{-1}{5}}
+$$ The Wilcoxon test was used to compare age distribution between the two peaks, p-value \< 0.05 was considered statistically significant.
+
+Based on the trough between the two peaks in week 36 (September 6, 2023), we divided the outbreak into two waves: the first from January to September 6, 2023, and the second from September 13 to December 2023, with 20,358 and 23,014 HFMD reported cases, respectively.
+
+```{r}
+
+df23 <- df1 %>% filter(year(adm_week) == 2023)
+
+co <- data.frame()
+
+for (i in 0:6){
+  gen <- seq(0,1,le=52) + i
+  co <- rbind(co,gen)
+}
+
+
+df23 <- df1 %>% filter(year(adm_date) == 2023)
+wwww <- slide_age(time1 = df23$adm_date,
+                  age1 =  df23$age1,
+                  w1 = 7, s1=7)
+
+ch <- data.frame(date = wwww$adat$date,
+                 c0 = as.numeric(co[1,]),
+                 c1 = as.numeric(co[2,]),
+                 c2 = as.numeric(co[3,]),
+                 c3 = as.numeric(co[4,]),
+                 c4 = as.numeric(co[5,]),
+                 c5 = as.numeric(co[6,]))
+
+leb_month <- c("Jan",rep("",3),"Feb",rep("",3),"Mar",rep("",4),"Apr",rep("",3),
+               "May",rep("",4),"Jun",rep("",3),"Jul",rep("",3),"Aug",rep("",4),
+               "Sep",rep("",3),"Oct",rep("",3),"Nov",rep("",4),"Dec",rep("",3))
+
+ts <- data.frame(wwww$wdat$date,wwww$wdat$age) %>%
+      filter(!is.na(wwww$wdat$date) & !is.na(wwww$wdat$age)) %>%
+      count(wwww$wdat$date) %>%
+      set_colnames(c("time","n")) %>% 
+      mutate(peak = c(rep("1st",36),rep("2nd",nrow(.)-36))) %>% 
+      ggplot(aes(x =time, y = n,fill = peak)) +
+      geom_bar(stat = "identity",alpha = 0.6,color="black") +
+      theme_minimal()+
+      scale_y_continuous(name = "Cases",
+                         breaks = seq(0,3000,by = 1000),
+                         limit =c(0,3000))+
+      scale_fill_manual(values = c("#582C83FF","#FFC72CFF"))+
+      labs(tag = "A")+ 
+      geom_vline(xintercept = "2023-09-06")+ 
+      theme(axis.title.x = element_blank(),
+            axis.text.x = element_blank(),
+            axis.ticks.x = element_blank(),
+            legend.position = "none",
+            plot.tag = element_text(face = "bold", size = 18),
+            axis.title.y = element_text(size = 18),
+            axis.text.y = element_text(size = 18))
+
+hm <- ggplot(data=wwww$wdat, aes(x=date, y=age)) +
+      stat_density(
+        aes(fill = after_stat(density)),
+        geom = "raster",
+        position = "identity"
+      )+
+      scale_fill_paletteer_c("grDevices::Inferno")+
+      # scale_fill_gradient(low="#040404FF", high= "#FFFE9EFF")+
+      # scale_fill_distiller(palette = "Blues")+
+      theme_minimal()+
+      scale_y_reverse(name = "Age",lim= rev(c(0,6)),breaks = seq(0,6))+
+      scale_x_discrete(name = "Admission week",labels = leb_month)+
+      labs(tag = "B",fill = "Density")+
+      # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1,size = 8))+
+      geom_line(data = ch,aes(x = date,y = c0),col = "white",
+                group = 1,lwd = 0.25,alpha = 0.8)+
+      geom_line(data = ch,aes(x = date,y = c1),col = "white",
+                group = 1,lwd = 0.25,alpha = 0.8)+
+      geom_line(data = ch,aes(x = date,y = c2),col = "white",
+                group = 1,lwd = 0.25,alpha = 0.8)+
+      geom_line(data = ch,aes(x = date,y = c3),col = "white",
+                group = 1,lwd = 0.25,alpha = 0.8)+
+      geom_line(data = ch,aes(x = date,y = c4),col = "white",
+                group = 1,lwd = 0.25,alpha = 0.8)+
+      geom_line(data = ch,aes(x = date,y = c5),col = "white",
+                group = 1,lwd = 0.25,alpha = 0.8)+
+      theme(axis.title.y = element_text(size = 18),
+            axis.ticks.x = element_blank(),
+            legend.position = "bottom",
+            plot.tag = element_text(face = "bold", size = 18),
+            axis.title.x = element_text(size = 18),
+            axis.text.x = element_text(size = 18),
+            axis.text.y = element_text(size = 18),
+            legend.text = element_text(size = 10),
+            legend.title = element_text(size = 18))
+
+fi_peak <- df1 %>% filter(year(adm_date) == "2023") %>%
+  filter((adm_date <= as.Date("2023-09-03")&
+            !is.na(adm_date) & !is.na(age1)))
+
+se_peak <- df1 %>% filter(year(adm_date) == "2023") %>%
+  filter((adm_date > as.Date("2023-09-03")) &
+           !is.na(adm_date) & !is.na(age1))
+
+data <- data.frame(
+  peak = c( rep("1st half",nrow(data.frame(se_peak$age1))),
+            rep("2nd half",nrow(data.frame(fi_peak$age1)))),
+  age = c( fi_peak$age1, se_peak$age1 )
+)
+
+## density plot
+
+ad <- ggplot(data=data, aes(x=age, group=peak, fill=peak)) +
+      geom_density(alpha = 0.6) +
+      scale_fill_manual(values = c("#582C83FF","#FFC72CFF")) +
+      scale_x_reverse(limit = c(6,0),breaks = seq(0,6,by=1))+
+      coord_flip()+
+      theme_minimal()+
+      labs(x = "Age", y ="Density",tag = "C",fill = "Outbreak")+
+      theme(axis.title.y = element_blank(),
+            axis.ticks.x = element_blank(),
+            legend.position = "bottom",
+            plot.tag = element_text(face = "bold", size = 18),
+            axis.title.x = element_text(size = 18),
+            axis.text.x = element_text(size = 18),
+            axis.text.y = element_text(size = 18),
+            legend.text = element_text(size = 18),
+            legend.title = element_text(size = 18))
+```
+
+```{r}
+#| fig-width: 14
+#| fig-height: 7
+#| out-width: "100%"
+#| fig-format: png
+#| fig-cap: "(A) Weekly case count of HFMD outbreak in Ho Chi Minh City in 2023, the vertical line separates the cases of the first and the second wave of the outbreak for analysis in Figure 1C. (B) Weekly distribution of age over time, the lines represent the baby cohorts through a year. (C) Age distribution between the first and second wave of the outbreak. "
+
+((ts/hm)|(plot_spacer()/ad))+
+  plot_layout(widths = c(2.5,1))
+```
+
+```{r}
+fi_peak <- df1 %>% filter(year(adm_date) == "2023") %>% 
+  filter((adm_date <= as.Date("2023-09-03")&
+            !is.na(adm_date) & !is.na(age1)))
+
+se_peak <- df1 %>% filter(year(adm_date) == "2023") %>% 
+  filter((adm_date > as.Date("2023-09-03")) &
+           !is.na(adm_date) & !is.na(age1))
+
+data_2p <- data.frame(
+  peak = c( rep("1st peak",nrow(data.frame(se_peak$age1))),
+            rep("2nd peak",nrow(data.frame(fi_peak$age1)))),
+  age = c( fi_peak$age1, se_peak$age1 )
+)
+
+data_2p %>% 
+tbl_summary(by = peak,
+            digits = list(all_continuous() ~ 3)) %>% 
+  add_p()
+```
+
+::: {.callout-tip title="Results"}
+-   The first wave was caused mainly by two age groups: 1–2 years old and 2–3 years old, while the 0–1 year old and 1–2 years old groups contributed to the second half
+
+-   The newborn baby cohort showed the first signal of infection in September 2023 and mainly contributed to the second wave from October to December 2023
+:::
+
+::: {.callout-note title="Conclusion"}
+-   The outbreak was caused by two different age groups: children aged 1–3 years mainly contributed to the first wave, while those aged 0–2 years mainly contributed to the second wave
+
+-   The low density of the 0–1 age group during the first peak, when these children were around six months old, indicates that maternal immunity offered protection during the first six months of life
+:::
+
+### Hypothesis 3: Variation in contact rate between summer break and school term
+
+We used the time-series SIR (tSIR) model [@becker2017] to evaluate the interaction between the level of **population susceptible** and **contact rate**.
+
+$$
+\begin{align*}
+S_{t+1} &= B_{t+1} + S_t - I_{t+1} \\
+\mathbb{E}(I_{t+1}) &= \beta_{t+1} S_t I_t^{\alpha}
+\end{align*}
+$$
+
+Where:
+
+-   S: susceptible population
+-   I: Infectious population
+-   B: Birth
+-   $\alpha$: epidemic saturation (correction factor for switching from continuous to discrete time)
+-   $\beta$: seasonal contact rate
+
+Main assumption:
+
+-   The infectious period is fixed at the sampling interval of the data (weekly)
+
+-   Over a long enough time, the sum of births and cases should be approximately equal
+
+### Birth estimation
+
+The Hepatitis B vaccine registry of HCMC was used for birth data of the tSIR model
+
+General Additive Model (GAM) with REML method for births estimation in 2023:
+
+$$
+Births \sim s(week_{1-52}) + s(week_{1-270})
+$$
+
+```{r}
+count_dangky_week <- readRDS("D:/OUCRU/hfmd/data/count_dangky_week.rds")
+child <- count_dangky_week %>% filter(birth_year >= 2017) %>% group_by(birth_week, birth_year) %>%
+  summarise(n=sum(n)) %>% arrange(birth_year)
+colnames(child) <- c("week","year","birth")
+## combine week 52 and 53
+
+child$week <- ifelse(child$week == 53,52,child$week)
+
+child <- child %>% group_by(year) %>%
+  mutate(newn = ifelse(week == 52, sum(birth[week==52]), birth)) %>%
+  {data.frame(.$week, .$year, .$newn )} %>% unique() %>%
+  magrittr::set_colnames(c("week","year","birth"))
+
+child$week2 <- seq(1:length(child$week))
+
+time <- data.frame()
+
+for (i in 2017:2022){
+  range <- child$week[child$year == i]
+  if (length(range) == 52){
+  time_add <- seq.int(i + 7/365 ,(i+1) - 7/365,
+                                 length.out = length(range)) %>% data.frame()
+  } else {
+  time_add <- seq.int(i + 7/365 ,(i+1) - 7/365,
+                                   length.out = 52)[1:length(range)] %>% data.frame()
+  }
+  time <- rbind(time,time_add)
+}
+
+
+child[,5] <- time %>%
+  magrittr::set_colnames(c("time"))
+
+## model fitting
+fit <- mgcv::gam(birth ~ s(week) + s(week2),method = "REML",data = child)
+
+cutpoint <- function(point){
+  fitt <- mgcv::gam(birth ~ s(week) + s(week2),
+                    method = "REML",data = child[-c(point:nrow(child)),])
+
+  new_data2 <- data.frame(week = rep(1:52,7))
+
+  new_data2$week2 <- seq(1,nrow(new_data2))
+  new_data2$year <- rep(2017:2023,each = 52)
+
+  time <- data.frame()
+  for (i in 2017:2023){
+    range <- new_data2$week[new_data2$year == i]
+    time_add <- data.frame(seq.int(i + 7/365 ,(i+1) - 7/365,
+                                   length.out = length(range)))
+    time <- rbind(time,time_add)
+  }
+
+  new_data2[4] <- time %>%
+    magrittr::set_colnames(c("time"))
+
+  est2 <- predict.gam(fitt,newdata = new_data2,
+                      type="response",se.fit = TRUE)
+
+  new_data2 <- new_data2 %>% mutate(
+    fit = est2$fit,
+    lwr = est2$fit - qt(0.95,nrow(new_data2))*est2$se.fit,
+    upr = est2$fit + qt(0.95,nrow(new_data2))*est2$se.fit,
+  )
+  out <- list()
+  out$point <- point
+  out$df <- new_data2
+  return(out)
+}
+
+
+plot_cp <- function(model){
+  dta <- model$df
+  ggplot(data = dta) +
+    geom_line(aes(x = time,y = fit),col = "blue")+
+    geom_ribbon(aes(x = time,ymin = lwr, ymax = upr), fill = "royalblue",alpha = 0.4)+
+    geom_vline(xintercept = dta$time[dta$week2 == model$point])+
+    ylab("births")+
+    theme_minimal()
+}
+```
+
+```{r}
+#| fig-width: 14
+#| fig-height: 7
+#| out-width: "100%"
+#| fig-format: png
+model <- cutpoint(270)
+
+plot_cp(model)+
+  geom_point(data = child[1:270,], aes(x = time, y = birth))+
+  annotate("text", x= 2017, y=3500, label= "Fitting",size = 10) +
+  annotate("text", x = 2023.5, y=3500, label = "Estimation",size = 10)+
+  plot_annotation(
+    title = "Fitting data until week 10/2022"
+  )+
+  labs(y = "Number of births")+
+  theme(axis.text.x = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        axis.title.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        plot.title = element_text(size = 18))
+```
+
+### tSIR model
+
+```{r output=FALSE, warning=FALSE}
+hfmd23 <- df1 %>% filter(year(adm_week) == "2023") %>%
+  filter(!is.na(adm_week) ) %>%
+  count(adm_week)
+
+hfmd23$week <- 1:length(hfmd23$adm_week)
+hfmd23$week <- ifelse(hfmd23$week == 53,52,hfmd23$week)
+
+hfmd23$n2 <- ifelse(hfmd23$week == 52, sum(hfmd23$n[hfmd23$week==52]), hfmd23$n)
+
+hfmd23 <- hfmd23[-53,]
+
+generator <- odin::odin({
+  deriv(N) <- r * N * (1 - N / K)
+  initial(N) <- N0
+
+  N0 <- user(1)
+  K <- user(100)
+  r <- user()
+})
+
+mod <- generator$new(N0 = 9381717,r = 7.4/52,K= 9456700)
+y3 <- mod$run(1:52)
+
+
+##
+dta23 <- model$df %>% filter(year == 2023)
+hcm23 <- data.frame(time = dta23$time,
+                    cases = hfmd23$n,
+                    births = dta23$fit,
+                    pop = y3[,2])
+
+hcm_hfmd23 <- runtsir(data = hcm23, IP = 1, xreg = "cumcases", regtype = "gaussian",
+                     alpha = NULL, sbar = NULL, method = "negbin", nsim = 100,
+                     family = "gaussian", link = "identity")
+
+beta <- hcm_hfmd23$contact
+beta[52,] <- beta[51,]
+```
+
+```{r}
+#| fig-width: 14
+#| fig-height: 7
+#| out-width: "100%"
+#| fig-format: png
+
+ggplot(data = hcm23 %>%
+  select(time,cases) %>% mutate(date = hfmd23$adm_week + 3)) +
+  geom_line(aes(x= as.character(date), group = 1, y = cases,
+                linetype = "cases reported"))+
+  # geom_bar(aes(x= as.character(date), y = cases),stat = "identity")+
+  geom_line(aes(x = as.character(date) ,group = 1, y = hcm_hfmd23$res$mean,
+                linetype = "model fitted"))+
+  geom_line(aes(x = as.character(date),
+                y= beta$beta*15000000,
+                group =1,col = "contact rate"),alpha = 0.3,inherit.aes = FALSE,
+            lwd = 2) +
+  scale_color_manual(values = c("contact rate" = "blue"),
+                     name="Analysis Type")+
+  scale_linetype_manual(values = c("cases reported" = "dashed","model fitted" = "solid"),
+                        name="Analysis Type")+
+  scale_x_discrete(name = "Date",labels = leb_month)+
+  scale_y_continuous(
+    name = "Cases",
+    # Add a second axis and specify its features
+    sec.axis = sec_axis(~./15000000, name="Contact rate")
+  )+
+  theme_minimal()+
+  theme(axis.text.x = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        axis.title.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 18),
+        legend.position = "inside",
+        legend.position.inside =  c(.15, .60))+
+  geom_vline(xintercept = as.character("2023-05-24"))+
+  geom_vline(xintercept = as.character("2023-09-06"))+
+  annotate(
+    geom = "text", x = as.character("2023-05-31"), y = 3500,
+    label = "Summer break", hjust = 0, vjust = 1, size = 10
+  )
+```
+
+## Serological data analysis
+
+### Seroepidemiology
+
+The generalized additive models (GAM) with a binomial error distribution, logit link, and B-splines smooth terms with the restricted maximum likelihood method were used to model seroprevalence of each age group as a function of time, and seroprevalence as a function of age.
+
+```{r}
+## case data
+df_plot <- df1 %>% filter(year(adm_week) == "2023") %>%
+  filter(!is.na(adm_week) ) %>%
+  count(adm_week) %>% as.data.frame()
+
+ts2 <- ggplot()+
+  geom_bar(data = df_plot, aes(x = as.Date(adm_week), y = n),stat = "identity",
+           alpha = 0.5) +
+  labs(x = "Admission week",y = "Cases")+
+  annotate("rect", fill = "blue",
+           xmin = as.Date(c("2022-12-01","2023-04-01","2023-08-01","2023-12-01")), 
+           xmax = as.Date(c("2022-12-30","2023-04-30","2023-08-30","2023-12-30")), 
+           ymin = 0, ymax = Inf, alpha = .2)+
+  xlim(as.Date("2022-11-24"),as.Date("2024-01-01"))+
+  theme_classic()+
+  scale_y_continuous(breaks = seq(0,3000,by = 1000),
+                     limit =c(0,3000))+
+  theme(
+    axis.text.x = element_text(size = 18),
+    axis.text.y = element_text(size = 18),
+    legend.text = element_text(size = 18),
+    axis.title.x = element_text(size = 18),
+    axis.title.y = element_text(size = 18))
+
+## serological data
+df.list <- list(t1222,t423,t823,t1223)
+fig2a <- df.list %>% bind_rows(.id = "label") %>% 
+        ggplot(aes(x = age, y = pos)) +
+          # geom_jitter(height = 0.05)+
+          geom_point(aes(x = age, pos),
+                     shape = "|")+
+          facet_wrap(~factor(col_time,levels = c("Dec 2022","Apr 2023",
+                                                 "Aug 2023","Dec 2023")),
+                     ncol = 4)+
+          geom_smooth(fill = "blue",alpha = 1/10,
+                      method = mgcv::gam,formula = y ~ s(x, bs = "bs"),
+                      method.args = list(method = "REML",link = "logit",
+                                         family = "binomial"))+
+          labs(y = "Seroprevalence (%)",x = "Age",tag = "A")+
+          scale_y_continuous(labels = scales::label_percent())+
+          coord_cartesian(ylim = c(0, 1))+
+          theme_bw()+ 
+          theme(axis.title.x = element_text(size = 18),
+                axis.text.x = element_text(size = 18),
+                legend.position = "none",
+                plot.tag = element_text(face = "bold", size = 18),
+                axis.title.y = element_text(size = 18),
+                axis.text.y = element_text(size = 18),
+                strip.text.x = element_text(size = 18))
+```
+
+```{r}
+#| fig-width: 14
+#| fig-height: 7
+#| out-width: "100%"
+#| fig-format: png
+
+fig2a/
+  ts2
+```
+
+### Compare attack rate and seroprevalence per age group over time
+
+Attack rates by age group were calculated using the population size for each age group from the latest Ho Chi Minh city census in 2019. Attack rate (AR) on day t was followed as:
+
+$$
+AR_{t} = \frac{Cases_{t}}{Population \ size - \sum_{i=1}^{t-1} Cases_{i}}
+$$
+
+```{r}
+df23$agr <- cut(df23$age1, breaks = c(0, 1, 2, 3, 4,5,6,Inf), right = F)
+df23$agr <- factor(df23$agr, labels = c("[0-1)", "[1-2)", "[2-3)",
+                                        "[3-4)","[4-5)","[5-6)","6+"))
+
+df23$age_gr2 <- cut(df23$age1+0.00000001, breaks = c(seq(0, 15, by = 3),82),
+                       labels = c("<0 & ≤3 years",
+                                  "<3 & ≤6 years",
+                                  "<6 & ≤9 years",
+                                  "<9 & ≤12 years",
+                                  "<12 & ≤15 years",
+                                  "16+"))
+
+hcm19 <- census2019 %>% filter(province == "Thành phố Hồ Chí Minh")
+
+hcm19$district <- hcm19$district %>%
+  str_remove_all("Quận|Huyện") %>%
+  str_replace_all(
+    c("\\b2\\b|\\b9\\b"  = "Thủ Đức")) %>%
+  trimws(which = "both")
+
+
+
+
+hcm19$age2 <- word(hcm19$age,end = 1) |> as.numeric()
+
+hcm19$age3 <- cut(hcm19$age2,breaks = c(seq(0, 15, by = 3),82),
+                     labels = c("<0 & ≤3 years",
+                                "<3 & ≤6 years",
+                                "<6 & ≤9 years",
+                                "<9 & ≤12 years",
+                                "<12 & ≤15 years",
+                                "16+"))
+
+pop_agegr <- hcm19 %>%
+  group_by(age3) %>%
+  summarise(n = sum(n))
+
+atk_rate <- df23 %>%
+  select(adm_week,age_gr2)%>%
+  count(age_gr2,adm_week) %>%
+  left_join(pop_agegr,by = join_by(age_gr2 == age3)) %>%
+  group_by(age_gr2) %>%
+  mutate(pop = n.y - cumsum(lag(n.x, default = 0)),
+         atr = cumsum(n.x)/pop)  %>%
+  select(-n.y) %>% 
+  mutate(
+    attack_rate_ma = slide_dbl(
+      .x      = atr,
+      .f      = mean,         # function to compute
+      .before = 4,            # 4 weeks before = 5-week window total
+      .after  = 0,
+      .step = 1,
+      .complete = TRUE        # only compute for full windows
+    )
+  ) %>%
+  ungroup() %>% na.omit() %>% filter(age_gr2 != "16+") %>% 
+  ggplot(aes(x = adm_week,y=log(attack_rate_ma*100000))) +
+  # geom_bar(stat = "identity")+
+  geom_line()+
+  facet_wrap(vars(age_gr2),ncol = 5)+
+  scale_x_date(breaks = seq(as.Date("2022-12-01"),as.Date("2023-12-31"), le = 4),
+               date_labels = "%b %Y", minor_breaks = NULL)+
+  scale_y_continuous(minor_breaks = NULL)+
+  # scale_x_date(date_breaks = "4 months",date_labels = "%b %Y")+
+  coord_cartesian(ylim = c(-2.5,9.5),xlim = as.Date(c("2022-12-01","2023-12-31")))+
+  theme_bw()+
+  labs(x = "Admission week",y= "Log cumulative attack rate",tag = "A")+ 
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_blank(),
+        plot.tag = element_text(face = "bold", size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18))
+
+
+## sero_prevalence by age group
+
+sero <- rbind(t1222,t1223,t423,t823)
+
+sero$age_gr2 <- cut(sero$age+0.00000001, breaks = seq(0, 15, by = 3),
+                       labels = c("<0 & ≤3 years",
+                                  "<3 & ≤6 years",
+                                  "<6 & ≤9 years",
+                                  "<9 & ≤12 years",
+                                  "<12 & ≤15 years"))
+
+sero$col_date <- make_date(sero$col_year,sero$col_month,sero$col_day)
+
+sero$age_gr2 <- factor(sero$age_gr2,
+                         levels = c("<0 & ≤3 years",
+                                    "<3 & ≤6 years",
+                                    "<6 & ≤9 years",
+                                    "<9 & ≤12 years",
+                                    "<12 & ≤15 years"))
+
+## observation seroprevalence
+te_sp <- sero %>% 
+  group_by(age_gr2,col_time) %>% 
+  count(pos) %>% 
+  pivot_wider(names_from = pos, values_from = n) %>%
+  ungroup() %>% 
+  mutate(tot = `0`+`1`,
+         sp = `1`/(`0`+`1`)) %>% 
+  as.data.frame()
+
+for (i in 1:nrow(te_sp)) {
+  te_sp$lwr[i] <- prop.test(te_sp$`1`[i],te_sp$tot[i],correct=TRUE)$conf.int[1]
+  te_sp$upr[i] <- prop.test(te_sp$`1`[i],te_sp$tot[i],correct=TRUE)$conf.int[2]
+}
+
+
+col_ddd<- sero %>% 
+  group_by(age_gr2,col_time) %>% 
+  summarise(mean = mean(col_date)) %>%
+  ungroup()
+
+te_sp$col_date <- col_ddd$mean
+
+sp_agr <- ggplot(sero,
+       aes(x = col_date, y = pos)) +
+  # geom_jitter(height = 0.05)+
+  geom_point(aes(x = col_date, pos),
+             shape = "|")+
+  geom_smooth(fill = "blue",alpha = 1/10,
+              method = mgcv::gam,formula = y ~ s(x, bs = "bs"),
+              method.args = list(method = "REML",link = "logit",
+                                 family = "binomial"))+
+  geom_point(data = te_sp,
+             aes(x  = col_date,y = sp))+
+  geom_errorbar(data = te_sp,
+                aes(x  = col_date,y = sp,ymin = lwr, ymax = upr),alpha = .5)+
+  facet_wrap(~age_gr2,
+             ncol = 5)+
+  labs(x = "Collection date", y  = "Seroprevalence (%)",tag = "B")+
+  scale_x_date(breaks = seq(as.Date("2022-12-01"),as.Date("2023-12-31"), le = 4),
+               date_labels = "%b %y", minor_breaks = NULL)+
+  scale_y_continuous(labels = scales::label_percent(), minor_breaks = NULL)+
+  # scale_x_date(date_breaks = "4 months",date_labels = "%b %Y")+
+  coord_cartesian(ylim = c(0, 1),xlim = as.Date(c("2022-12-01","2023-12-31")))+
+  theme_bw()+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 12,vjust = 0.5,
+                                   hjust = 0.5,angle = 45),
+        plot.tag = element_text(face = "bold", size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18))
+```
+
+```{r}
+#| fig-width: 14
+#| fig-height: 7
+#| out-width: "100%"
+
+atk_rate/
+  sp_agr
+```
+
+## Temporally Forced Model
+
+### Background
+
+Traditional SIR model assumes that the force of infection depends on the proportion of infectives in the population, formulated as $\beta \frac{I}{N}$ in the following system of ODEs.
+
+$$
+\begin{cases}
+\frac{dS}{dt} = \mu N-\beta \frac{I}{N} S\\
+\frac{dI}{dt} = \beta \frac{I}{N} S - \gamma I\\
+\frac{dR}{dt} = \gamma I\\
+\end{cases}
+$$
+
+Where:
+
+-   $\mu$ is the per capita birth rate
+
+-   $\beta$ is the transmission rate
+
+-   $\gamma$ is the recovery rate
+
+::: {.callout-note}
+
+A range of statistical approaches have revealed that transmission of childhood infections varies seasonally, peaking at the start of the school year and declining significantly in the summer months.
+
+::: 
+
+### Sinusoidal $\beta(t)$
+
+[@bailey1975] explored a simplified SIR model:
+
+$$\frac{dS}{dt} =  \mu N - \beta(t) \frac{I}{N} S$$
+
+$$\frac{dI}{dt} =  \beta(t) \frac{I}{N} S - \gamma I $$ where:
+
+-   $\mu$ is the per capita birth rate
+
+-   $\gamma$ is the recovery rate from the infection
+
+The transmission rate is a function of time, β(t), and was taken by Bailey to be a sinusoid:
+
+$$\beta(t) = \beta_{0}(1+\beta_{1}cos(\omega t))$$
+
+where:
+
+-   $\beta_{0}$: the baseline or average transmission rate
+
+-   $\omega$: the period of the forcing ($\frac {2 \pi}{time~unit}$,1 year = $\frac{2 \pi}{1}$)
+
+-   $\beta_{1}$: the amplitude of seasonality
+
+```{r}
+
+generate_omega_seq <- function(start = 1, end = 3, step = 0.5) {
+  time_units <- seq(start, end, by = step)
+  omega_seq <- (2 * 3.14) / time_units
+  return(omega_seq)
+}
+
+
+t = seq(0,5,le = 1001)
+
+beta_0 <- seq(0.5,5,by = .5)
+omega <- generate_omega_seq()
+beta_1 <- seq(0.5,5,by = .5)
+
+dt <- expand.grid(t,beta_0,omega,beta_1) 
+colnames(dt) <- c("t","beta_0","omega","beta_1")
+dt1 <- dt %>% mutate(beta = beta_0*(1 + beta_1*cos(omega*t)))
+
+ojs_define(data = dt1)
+```
+
+```{ojs}
+//| echo: false
+
+ojsdata = transpose(data)
+
+viewof beta_0 = Inputs.range(
+  [1, 5], 
+  {value: 1, step: 1, label: "beta_0"}
+)
+
+
+viewof omega = Inputs.radio(
+    [6.28, 4.1867, 3.1400, 2.5120, 2.0933], 
+    {value:6.28,label: "Omega"})
+
+viewof beta_1 = Inputs.range(
+  [1, 5], 
+  {value: 1, step: 1, label: "beta_1"}
+)
+
+ojsdata_filtered = ojsdata.filter(function(circle){
+  return circle.beta_0 == beta_0 & circle.beta_1 == beta_1 & circle.omega == omega})
+```
+
+```{ojs}
+//| echo: false
+
+Plot.plot({
+  y: {
+    grid: true,
+    label: "Beta",
+    domain: [-10, 10],
+    ticks: d3.range(-10, 11, 1)  // From -10 to 10 with step 1
+  },
+  marks: [
+    Plot.lineY(ojsdata_filtered, {x: "t", y: "beta", stroke: "steelblue"}),
+    Plot.lineY(ojsdata_filtered, {x: "t", y: "beta_0", stroke: "red"})
+  ]
+})
+```
+
+
+#### SIR model with seasonality
+
+The first systematic examination of seasonality affecting the dynamical pattern of epidemics was made, as far as we are aware, by Klaus Dietz in his seminal 1976 paper. Dietz
+carried out a stability analysis of the familiar SIR model:
+
+$$
+\begin{cases}
+\frac{dS}{dt} = bN - (\beta(t) \frac{I}{N} + b)S \\
+\frac{dI}{dt} = \beta(t) \frac{I}{N} S - (b + \gamma)I
+\end{cases}
+$$
+
+Where $\beta(t)$ is defined as $\beta(t) = \beta_0(1- \beta_1 \text{cos}(\omega t))$ ( he used a minus sign in his formulation in order to ensure that contact rates were at their lowest at the start of the epidemic year)
+
+```{r}
+#| echo: true
+
+curve(1*(1 - 0.5*cos(2*pi*time)), 0, 6,
+      n = 1001, xname = "time", xlab = "Time", ylab = "Transmission rate")
+```
+
+```{r output=FALSE, warning=FALSE}
+#| code-summary: "SIR model with seasonality"
+#| echo: true
+
+library(odin2) 
+library(dust2)
+
+sir_seasonality <- odin2::odin({
+  N <- S + I + R
+  deriv(S) <- b*N - (beta_t*(I/N) + b)*S
+  deriv(I) <- beta_t*(I/N)*S - (b + gamma)*I
+  deriv(R) <- gamma*I - R*b
+
+  # seasonality forcing
+  beta_0 <- parameter(0.4)
+  beta_1 <- parameter(0)
+  omega <- parameter(2*3.14/52) # use week as time unit by default
+  beta_t <- beta_0*(1 - beta_1*cos(omega*time))
+  
+  # initialize starting population
+  init_S <- parameter(9500)
+  init_I <- parameter(500)
+  gamma <- parameter(0.05)
+  b <- parameter(0.05)
+  
+  initial(S) <- init_S
+  initial(I) <- init_I
+  initial(R) <- 0
+  
+})
+```
+
+```{r}
+#| code-summary: "helper function"
+#| echo: true
+
+# helper function to run the model 
+run_mod <- function(mod, pars, duration=100, timestep=0.05){
+  # --- initialize simulation time ---- 
+  times <- seq(0, duration, timestep)
+  
+  sys <- dust_system_create(mod, pars)
+  dust_system_set_state_initial(sys)
+  out <- dust_system_simulate(sys, times)
+  out <- dust_unpack_state(sys, out)
+  
+  out %>% 
+    as.data.frame() %>% 
+    mutate(
+      t = times
+    )
+}
+
+# helper function to plot the proportion of a specified compartment 
+plot_comp_prop <- function(data, comp="I", t_lower = 90, use_log = TRUE, osc_freq=NULL){
+  plot <- data %>% 
+    mutate(
+      N = S + I + R,
+      prop = .data[[comp]]/N,
+      prop = if(use_log) log(prop) else prop
+    ) %>% 
+    filter(t >= t_lower) %>%
+    ggplot(aes(x = t, y = prop)) +
+      geom_line(color = "cornflowerblue") 
+  
+  # --- annotate start and end of each cycle if oscillation frequency is provided --- 
+  if(!is.null(osc_freq)){
+    # compute oscillation period
+    osc_period <- 2*pi/osc_freq
+    
+    cycle_df <- data.frame(
+        cycle_t = seq(0, by = osc_period, 
+                      length.out = round(max(data$t)/osc_period) + 1)
+      ) %>% 
+      filter(cycle_t >= t_lower)
+    
+    plot <- plot + geom_vline(
+      aes(xintercept = cycle_t),
+      data=cycle_df,
+      color = "red", linetype = "dashed")
+  }
+  
+  plot + 
+    labs(
+        title = paste0("Oscillations in ",comp, " compartment"),
+        y = if(use_log) paste0("Log(proportion of ",comp, ")") else 
+          paste0("proportion of ", comp),
+        x = "Time (years)"
+      )
+}
+
+# helper function to plot the SIR model
+plot_sir <- function(data, ylab="Count"){
+  data %>% 
+    ggplot() +
+      geom_line(aes(x = t, y = S, color = "S")) +
+      geom_line(aes(x = t, y = I, color = "I")) +
+      geom_line(aes(x = t, y = R, color = "R")) +
+      scale_color_manual(
+        values = c("S" = "cornflowerblue", "I" = "red", "R" = "green")
+      )+
+      labs(
+        title = "Model output",
+        x = "Time",
+        y = ylab
+      )
+}
+```
+
+Model
+
+$$
+\begin{cases}
+\frac{dS}{dt} = bN - (\beta(t) \frac{I}{N} + b)S \\
+\frac{dI}{dt} = \beta(t) \frac{I}{N} S - (b + \gamma)I
+\end{cases}
+$$
+
+Where $\beta(t) = \beta_0(1- \beta_1 \text{cos}(\omega t))$
+
+::: columns
+::: {.column width="50%"}
+
+```{r}
+#| code-summary: "Code for SIR without seasonality forcing"
+#| echo: true
+
+no_forcing_pars <- list(
+  beta_1 = 0,
+  beta_0 = 478,
+  gamma = 365/13,
+  b = 0.02,
+  init_S = 6e-2,
+  init_I = 1e-3
+)
+
+# --- run model + plot proportion of infectives ----
+run_mod(sir_seasonality, no_forcing_pars, duration=150) %>% 
+  plot_comp_prop(t_lower=0)+
+  theme_minimal()+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_text(size = 18))
+```
+
+:::
+
+::: {.column width="50%"}
+```{r}
+#| code-summary: "Code for SIR with seasonality forcing"
+#| echo: true
+
+forcing_pars <- no_forcing_pars
+forcing_pars$beta_1 <- 0.1
+forcing_pars$omega <- 3
+
+# --- run model + plot proportion of infectives ----
+run_mod(sir_seasonality, forcing_pars, duration=150) %>% 
+  plot_comp_prop(t_lower=0)+
+  theme_minimal()+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_text(size = 18))
+```
+:::
+:::
+
+::: {.callout-note title="Conclusion"}
+In the absence of seasonal forcing, the SIR family of models exhibit a **stable equilibrium**. The introduction of time-dependent transmission rates can generate a variety of **dynamical patterns**—depending on parameter values— ranging from simple **annual epidemics** to **multiennial outbreaks** and eventually chaos.
+:::
+
+#### Dynamical Consequences of Seasonality
+
+In this section, we will explore how parameter values can generate a variety of **dynamical patterns**
+
+##### Harmonic and Sub-harmonic resonance {.unnumbered}
+ 
+In the absence of seasonal forcing (i.e. $\beta_1 = 0$), the system fluctuates with frequency $F$, where.
+
+$$
+F^2 = b(\gamma + b)(R_0  - 1) - (\frac{b R_0}{2})^2
+$$
+
+These oscillations are hereby referred to as the natural oscillations.
+
+
+When the natural period of oscillations is approximately the same as seasonal forcing period (i.e., $F \approx \omega$ ) we observe **harmonic resonance**
+
+When natural period of oscillations $\frac{1}{F}$ is close to an integer multiple of period of forcing $\frac{1}{\omega}$ (i.e. $\frac{1}{F} \approx n \frac{1}{\omega}$), we observe a phenomenon called **sub-harmonic resonance**.
+
+```{r}
+#| code-summary: "get_f_val function"
+#| echo: true
+
+get_f_val <- function(params, R_0=NULL){
+  f_val <- NULL
+  # --- Compute F -----
+  with(params, {
+    R_0 <- (beta_0)/(gamma)
+    f_val <<- sqrt( b*(gamma + b)*(R_0 - 1) - (b*R_0/2)**2 )
+  })
+  
+  f_val
+}
+```
+
+::: columns
+::: {.column width="50%"}
+
+```{r}
+#| code-summary: "harmonic resonance"
+#| echo: true
+
+harmonic_pars <- no_forcing_pars
+harmonic_pars$beta_1 <- 0.1
+
+# compute natural oscillation frequency  
+f_val <- get_f_val(harmonic_pars)
+# set omega = F
+harmonic_pars$omega <- f_val
+
+# --- run model + plot proportion of infectives ----
+run_mod(sir_seasonality, harmonic_pars, duration=150) %>%
+  plot_comp_prop(t_lower=140)+
+  theme_minimal()+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_text(size = 18))
+```
+
+:::
+::: {.column width="50%"}
+
+```{r}
+#| code-summary: "sub-harmonic resonance"
+#| echo: true
+
+sub_harmonic_pars <- no_forcing_pars
+sub_harmonic_pars$beta_1 <- 0.1
+
+# compute natural oscillation frequency  
+f_val <- get_f_val(sub_harmonic_pars)
+# set omega = F
+sub_harmonic_pars$omega <- 2*f_val
+
+# --- run model + plot proportion of infectives ----
+run_mod(sir_seasonality, sub_harmonic_pars, duration=150) %>%
+  plot_comp_prop(t_lower=140)+
+  theme_minimal()+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_text(size = 18))
+  
+```
+
+:::
+:::
+
+**Changes in** $\beta_1$ **and** $R_0$ can also lead to qualitatively different epidemic patterns.
+
+##### $\beta_{1}$ {.unnumbered}
+
+
+```{r}
+#| echo: true
+#| fig-width: 15
+#| fig-height: 7
+#| out-width: "100%"
+#| fig-format: png
+#| fig-cap: "Constructing a bifurcation diagram. The top four panels depict time-series data for the SIR model with different levels of seasonality (beta_1 = 0.1, 0.32, 0.37 and 0.45, respectively). The vertical line at the top of the panels indicate the points when the time series are sampled in order to construct the bifurcation diagram below. The vertical line in the bottom figure indicates the value of beta_1 corresponding to the top figure."
+
+
+## bifurcation diagram
+vlines <- c(131.5,133.2,135.65,137.40,139.85,141.60,144.05,145.80,148.25,149.95)
+
+bete1_seq <- seq(0.1,0.5,by = 0.001)
+out.df <- matrix(NA, ncol = 2, nrow = 0)
+for (z in 1:length(bete1_seq)) {
+  forcing_pars$beta_1 <- bete1_seq[z]
+  checkdt <- run_mod(sir_seasonality, forcing_pars, duration=150) %>%
+    mutate(
+      N = S + I + R,
+      prop = log(I/N)
+    ) %>% 
+    filter(t >= 70)  
+  uval <- checkdt %>% filter(t %in% vlines) %>% pull(prop) %>% unique()
+  out.df <- rbind(out.df, cbind(rep(bete1_seq[z], length(uval)), uval))
+}
+out.df <- as.data.frame(out.df)
+colnames(out.df) <- c("beta_1", "N")
+
+bifur <- ggplot(out.df, aes(x = beta_1, y = N)) + 
+  geom_point(size = 1)+
+  scale_x_continuous(breaks = seq(0.1,0.5,by = 0.05))+
+  scale_y_continuous(limits = c(-30,0))+
+  geom_vline(xintercept = c(0.1,0.32,0.37,0.45))+
+  theme_classic()+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_text(size = 18))
+
+## 
+forcing_pars$beta_1 <- 0.1
+beta_0.15 <- run_mod(sir_seasonality, forcing_pars, duration=150) %>%
+  plot_comp_prop(t_lower=130)+
+  geom_vline(xintercept = vlines, color = "red",alpha = 0.2)+
+  labs(subtitle = "beta1 = 0.1")+
+  theme_classic()+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_blank(),
+        plot.subtitle = element_text(size = 18))
+
+##
+forcing_pars$beta_1 <- 0.32
+beta_0.32 <- run_mod(sir_seasonality, forcing_pars, duration=150) %>%
+  plot_comp_prop(t_lower=130)+
+  geom_vline(xintercept = vlines, color = "red",alpha = 0.2)+
+  labs(subtitle = "beta1 = 0.32")+
+  theme_classic()+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_blank(),
+        plot.subtitle = element_text(size = 18))
+
+##
+forcing_pars$beta_1 <- 0.37
+beta_0.37 <- run_mod(sir_seasonality, forcing_pars, duration=150) %>%
+  plot_comp_prop(t_lower=130)+
+  geom_vline(xintercept = vlines, color = "red",alpha = 0.2)+
+  labs(subtitle = "beta1 = 0.37")+
+  theme_classic()+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_blank(),
+        plot.subtitle = element_text(size = 18))
+
+##
+forcing_pars$beta_1 <- 0.45
+beta_0.45 <- run_mod(sir_seasonality, forcing_pars, duration=150) %>%
+  plot_comp_prop(t_lower=130)+
+  geom_vline(xintercept = vlines, color = "red",alpha = 0.2)+
+  labs(subtitle = "beta1 = 0.45")+
+  theme_classic()+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_blank(),
+        plot.subtitle = element_text(size = 18))
+
+library(patchwork)
+
+(beta_0.15| beta_0.32 |beta_0.37|beta_0.45)/
+  bifur
+```
+
+##### $R_{0}$ {.unnumbered}
+
+```{r}
+#| echo: true
+#| fig-width: 15
+#| fig-height: 7
+#| out-width: "100%"
+#| fig-format: png
+#| fig-cap: "Constructing a bifurcation diagram. The top four panels depict time-series data for the SIR model with different levels of seasonality (beta_0 = 250, 600, and 900, respectively). The vertical line at the top of the panels indicate the points when the time series are sampled in order to construct the bifurcation diagram below. The vertical line in the bottom figure indicates the value of beta_0 corresponding to the top figure."
+
+## bifurcation diagram
+vlines <- vlines <- c(130.95,133.70,135.15,137.90,139.35,142.05,143.5,146.25,147.7)
+
+bete0_seq <- seq(100,1000,by = 0.5)
+out.df <- matrix(NA, ncol = 2, nrow = 0)
+for (z in 1:length(bete0_seq)) {
+  forcing_pars$beta_0 <- bete0_seq[z]
+  checkdt <- run_mod(sir_seasonality, forcing_pars, duration=150) %>%
+    mutate(
+      N = S + I + R,
+      prop = log(I/N)
+    ) %>% 
+    filter(t >= 70)  
+  uval <- checkdt %>% filter(t %in% vlines) %>% pull(prop) %>% unique()
+  out.df <- rbind(out.df, cbind(rep(bete0_seq[z], length(uval)), uval))
+}
+out.df <- as.data.frame(out.df)
+colnames(out.df) <- c("beta_0", "N")
+
+bifur_r0 <- ggplot(out.df, aes(x = beta_0, y = N)) + 
+  geom_point(size = 1)+
+  geom_vline(xintercept = c(250,600,900))+
+  theme_classic()+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_text(size = 18))
+
+##
+forcing_pars$beta_0 <- 250
+beta0_250 <- run_mod(sir_seasonality, forcing_pars, duration=150) %>%
+  plot_comp_prop(t_lower=130)+
+  geom_vline(xintercept = vlines, color = "red",alpha = 0.2)+
+  labs(subtitle = "beta0 = 250")+
+  theme_classic()+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_blank(),
+        plot.subtitle = element_text(size = 18))
+
+##
+forcing_pars$beta_0 <- 600
+beta0_600 <- run_mod(sir_seasonality, forcing_pars, duration=150) %>%
+  plot_comp_prop(t_lower=130)+
+  geom_vline(xintercept = vlines, color = "red",alpha = 0.2)+
+  labs(subtitle = "beta0 = 600")+
+  theme_classic()+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_blank(),
+        plot.subtitle = element_text(size = 18))
+
+##
+forcing_pars$beta_0 <- 900
+beta0_900 <- run_mod(sir_seasonality, forcing_pars, duration=150) %>%
+  plot_comp_prop(t_lower=130)+
+  geom_vline(xintercept = vlines, color = "red",alpha = 0.2)+
+  labs(subtitle = "beta0 = 900")+
+  theme_classic()+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_blank(),
+        plot.subtitle = element_text(size = 18))
+
+(beta0_250 | beta0_600 | beta0_900)/
+  bifur_r0
+```
+
+### Mechanisms of Multi-Annual Cycles
+
+The condition for growth of disease incidence is
+
+$$\begin{align}
+\frac {dI}{dt} &= \beta S \frac {I}{N} - (\gamma + \mu) I > 0 \\
+&= I (\gamma + \mu) (R_{0}\frac{S}{N}-1) >0   \\
+&\Rightarrow \frac{S}{N} >\frac{1}{R_{0}} \approx \frac{\gamma}{\beta} 
+\end{align}$$
+
+The spread only occur when a sufficient fraction of susceptible higher a critical value determined by $R_{0}$
+
+```{r}
+#| echo: true
+#| fig-width: 15
+#| fig-height: 7
+#| out-width: "100%"
+#| fig-format: png
+#| fig-cap: "The anatomy of seasonally forced epidemics. The level of susceptibles is color coded indicating when it is above or below the threshold."
+
+harmonic_pars <- no_forcing_pars
+harmonic_pars$beta_1 <- 0.1
+harmonic_pars$omega <- f_val
+
+harmonic_out <- run_mod(sir_seasonality, harmonic_pars, duration=150) %>% 
+  filter(t>=140) 
+
+harmonic_out %>% 
+  mutate(
+    # compute beta_t and threshold for the filtered timeframe
+    N = S + I + R,
+    prop_S = S/N,
+    prop_I = I/N,
+    beta_t = harmonic_pars$beta_0*(
+      1 - harmonic_pars$beta_1*cos(harmonic_pars$omega*t)
+    ),
+    threshold = (harmonic_pars$gamma)/beta_t, 
+    # check whether prop of S is above threshold
+    above_threshold = prop_S > threshold
+  ) %>% 
+  filter(t >= 140) %>% 
+  ggplot(aes(x = t))+
+  geom_line(aes(y = prop_S),color = "cornflowerblue",lwd=1)+ 
+  geom_point(aes(y = prop_S, color = above_threshold), size = 2.5) +
+  geom_line(aes(y = threshold), 
+            color = "black", linetype = "dashed",lwd=1)+
+  geom_line(aes(y = 0.1-(log(prop_I)/-200)),lwd=1,alpha = 0.5)+
+  geom_segment(aes(x = 139.5, y = 0.065, xend = 139.9, yend = 0.065),
+               arrow = arrow())+
+  annotate("text", x= 139.05, y=0.065, label= "Infectives",size = 5)+
+  geom_segment(aes(x = 139.5, y = 0.061, xend = 139.9, yend = 0.061),
+               arrow = arrow())+
+  annotate("text", x= 139.05, y=0.061, label= "Threshold",size = 5)+
+  geom_segment(aes(x = 139.5, y = 0.049, xend = 139.9, yend = 0.049),
+               arrow = arrow())+
+  annotate("text", x= 139.05, y=0.049, label= "S/N",size = 5)+
+  theme_classic()+
+  scale_y_continuous(name = "Susceptible")+
+  scale_x_continuous(limits = c(139,150))+
+  labs(color='Above threshold')+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_blank(),
+        plot.subtitle = element_text(size = 18),
+        legend.text = element_text(size = 18),
+        legend.title = element_text(size = 18))
+```
+
+- The peak in disease incidence coincides with the point at which the fraction of susceptibles $\frac{S}{N}$ falls below $\frac{\gamma}{\beta(t)}$. 
+
+- Once $S > \frac{\gamma}{\beta(t)}$ disease incidence rises. This pattern is repeated once transmission has depleted susceptibles below the threshold 
+
+```{r}
+#| echo: true
+#| fig-width: 15
+#| fig-height: 7
+#| out-width: "100%"
+#| fig-format: png
+#| fig-cap: "The anatomy of seasonally forced epidemics. The level of susceptibles is color coded indicating when it is above or below the threshold"
+
+sub_harmonic_out <- run_mod(sir_seasonality, sub_harmonic_pars, duration=150) %>% 
+  filter(t>=140) 
+
+sub_harmonic_out %>% 
+  mutate(
+    # compute beta_t and threshold for the filtered timeframe
+    N = S + I + R,
+    prop_S = S/N,
+    prop_I = I/N,
+    beta_t = sub_harmonic_pars$beta_0*(
+      1 - sub_harmonic_pars$beta_1*cos(sub_harmonic_pars$omega*t)
+    ),
+    threshold = (sub_harmonic_pars$gamma)/beta_t, 
+    # check whether prop of S is above threshold
+    above_threshold = prop_S > threshold
+  ) %>% 
+  filter(t >= 140) %>% 
+  ggplot(aes(x = t))+
+  geom_line(aes(y = prop_S),color = "cornflowerblue",lwd=1)+ 
+  geom_point(aes(y = prop_S, color = above_threshold), size = 2.5) +
+  geom_line(aes(y = threshold), 
+            color = "black", linetype = "dashed",lwd=1)+
+  geom_line(aes(y = 0.1-(log(prop_I)/-200)),lwd=1,alpha = 0.5)+
+  geom_segment(aes(x = 139.5, y = 0.069, xend = 139.9, yend = 0.069),
+               arrow = arrow())+
+  annotate("text", x= 139.05, y=0.069, label= "Infectives",size = 5)+
+  geom_segment(aes(x = 139.5, y = 0.055, xend = 139.9, yend = 0.055),
+               arrow = arrow())+
+  annotate("text", x= 139.05, y=0.055, label= "Threshold",size = 5)+
+  geom_segment(aes(x = 139.5, y = 0.061, xend = 139.9, yend = 0.061),
+               arrow = arrow())+
+  annotate("text", x= 139.05, y=0.061, label= "S/N",size = 5)+
+  theme_classic()+
+  scale_y_continuous(name = "Susceptible")+
+  scale_x_continuous(limits = c(139,150))+
+  labs(color='Above threshold')+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_blank(),
+        plot.subtitle = element_text(size = 18),
+        legend.text = element_text(size = 18),
+        legend.title = element_text(size = 18))
+```
+
+- For a slightly higher amplitude of seasonality ($\omega = 2F$) the picture changes in important ways
+
+- In this instance, however, the peak in the infectives is substantially larger than in the previous graph (due to the greater transmission rate $\omega = 2F$)
+
+- While at this point $S > \frac{\gamma}{\beta(t)}$, the transmission rate is very near its annual maximum (the threshold is near its minimum), and as a result the susceptibles do not remain above the threshold long enough to produce a large epidemic. It is only when the level of susceptibles exceeds the threshold for a second time that a large epidemic begins
+
+::: {.callout-note title="Conclusion"}
+In this instance, the seasonal changes in the transmission rate are intimately associated with the dynamics of susceptibles 
+:::
+
+## Forcing function 
+
+We've explored seasonality by assuming that the transmission rate is time dependent and specifically is determined by a simple sinusoidal function, this view has changed in recent years:
+
+-   seasonally forced models of childhood infections now more often use a square wave
+
+-   the transmission rate is assumed to be high during school terms and low at other times
+
+$$\beta(t)=\beta_{0}(1+b_{1}Term(t))$$
+
+where:
+
+-   $Term(t)$ is +1 during the school term and −1 at other times.
+
+-   $b_{1}$ to represent the amplitude of seasonality
+
+| Holiday          | Model days | Calender dates          |
+|------------------|------------|-------------------------|
+| Chirstmas        | 356-6      | December 21 - January 6 |
+| Easter           | 100-115    | April 10-25             |
+| Summer           | 200-251    | July 19 - September 8   |
+| Autumn Half Term | 300-307    | October 27-November 3   |
+
+: Timings of the major school holidays when Term = −1; during all other times Term = +1. {#tbl-letters}
+
+We obtain 92 school holidays , 273 days of school =\> many more “+1” days than “−1” days =\> give rise to a mean transmission rate averaged over the year. To ensure R0 is constant irrespective of the precise forcing function used and the amplitude of seasonality. If there are $D+$ days of school and $D−$ holidays, then our forcing function would be:
+
+$$\beta(t)=\frac{\beta_{0}}{\frac{1}{365}((1+b_{1})D_{+}+(1-b_{1})D_{-})}(1+b_{1}Term(t))$$
+
+```{r}
+#| echo: true
+library(latex2exp)
+
+beta_0 <- 1250
+beta_1 <- 0.25
+t <- seq(0,365,le = 1001)
+
+## sinusoidal function
+omega <- (2*pi)/365
+beta_sin_func <- data.frame(x = t,
+                            y = beta_0*(1 + beta_1*cos(omega*t)))
+
+## term time tranmission function
+
+schools_time <- c(0, 7, 100, 116, 200, 252, 300,308,356)
+schools_open <- c(-1, 1, -1, 1,   -1,   1,   -1, 1,-1)
+
+beta <- approx(
+  schools_time,
+  beta_0*(1 + beta_1*schools_open),
+  xout = t,
+  method = "constant",
+  rule = 2)
+
+## correct term time tranmission function
+mean_beta <- 1/365*((1+beta_1)*273+(1-beta_1)*92)
+
+beta_correct <- approx(
+  schools_time,
+  beta_0/mean_beta*(1 + beta_1*schools_open),
+  xout = t,
+  method = "constant",
+  rule = 2)
+```
+
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+#| out-width: "100%"
+
+ggplot() +
+  geom_line(data = as.data.frame(beta),
+            aes(x = x,y = y),lwd = 1,alpha = 0.5)+
+  geom_line(data = as.data.frame(beta_correct),
+            aes(x = x,y = y),lwd = 1,linetype = "dashed")+
+  geom_line(data = as.data.frame(beta_sin_func),
+            aes(x = x,y = y))+
+  scale_x_continuous(breaks = seq(0,365,by  = 50))+
+  scale_y_continuous(breaks = seq(800,1800,by  = 100),
+                     limits = c(800,1800))+
+  annotate("text", x = 50, y = 1700, label = "Winter Term")+
+  annotate("text", x = 160, y = 1700, label = "Spring Term")+
+  annotate("text", x = 300, y = 1700, label = "Autumn Term")+
+  annotate("text", x = 150, y = 1480, label = "Term time")+
+  annotate("segment", x = 150, y = 1500, xend = 150, yend = 1550,
+           arrow = arrow(type = "closed", length = unit(0.02, "npc")))+
+  annotate("text", x = 150, y = 1300, label = "Correct Term Time")+
+  annotate("segment", x = 150, y = 1320, xend = 150, yend = 1370,
+           arrow = arrow(type = "closed", length = unit(0.02, "npc")))+
+  annotate("text", x = 55, y = 1300, label = "Cosine")+
+  annotate("segment", x = 70, y = 1300, xend = 80, yend = 1300,
+           arrow = arrow(type = "closed", length = unit(0.02, "npc")))+
+  labs(x = "Time(years)",y = TeX(sprintf("Transmission rate $\\beta(t)$")))+
+  theme_classic() 
+```
+
+```{r output=FALSE, warning=FALSE}
+#| echo: true
+#| code-summary: "SIR model with term-based forcing function"
+#| fig-width: 15
+#| fig-height: 7
+#| out-width: "100%"
+#| fig-format: png
+
+sir_term <- odin2::odin({
+  N <- S + I + R
+  deriv(S) <- b*N - (beta_t*(I/N) + b)*S
+  deriv(I) <-beta_t*(I/N)*S - (b + gamma)*I
+  deriv(R) <- gamma*I - R*b
+
+  # seasonality forcing
+  beta_0 <- parameter(0.4)
+  beta_1 <- parameter(0)
+  
+  school_open <- parameter()
+  school_time <- parameter()
+  school_data_dim <- parameter()
+  dim(school_time) <- school_data_dim
+  dim(school_open) <- school_data_dim
+  
+  term <- interpolate(school_time, school_open, "constant")
+  beta_t <- beta_0*(1 + beta_1*term)
+  
+  # initialize starting population
+  init_S <- parameter(9500)
+  init_I <- parameter(500)
+  gamma <- parameter(0.05)
+  b <- parameter(0.05)
+  
+  initial(S) <- init_S
+  initial(I) <- init_I
+  initial(R) <- 0
+
+})
+```
+
+```{r}
+#| echo: true
+#| code-summary: "helper function"
+
+get_adjust_factor <- function(b1, formatted_schooldays){
+  # compute number of school days for each term
+  total_school_days <- sapply(formatted_schooldays$school_days, \(pair){
+    pair$max - pair$min + 1
+  })
+  # compute number of holidays for each term
+  total_holidays <- sapply(formatted_schooldays$holidays, \(pair){
+    pair$max - pair$min + 1
+  })
+  
+  adjust_factor <- (1/365)*((1+b1)*sum(total_school_days) + (1-b1)*sum(total_holidays))
+  1/adjust_factor
+}
+
+format_schooldays <- function(school_time, school_open){
+  prev <- 0
+  school_days <- list()
+  holidays <- list()
+  sapply(1:length(school_time), \(i){
+    if(school_open[i] == -1 && school_time[i]>0){
+      school_days[[length(school_days) + 1]] <<- list(min = prev, max = school_time[i]-1)
+      prev <<- school_time[i]
+    }else if (school_open[i] == 1 && school_time[i]>0){
+      holidays[[length(holidays) + 1]] <<- list(min = prev, max = school_time[i]-1)
+      prev <<- school_time[i]
+    }
+  })
+  
+  # handle cases when the end of school time is not the end of the year
+  if(prev < 365){
+    if(school_open[length(school_open)] == -1){
+      holidays[[length(holidays) + 1]] <- list(min = prev, max = 365)
+    }else{
+      school_days[[length(school_days) + 1]] <- list(min = prev, max = 365)
+    }
+  }
+  
+  list(
+    school_days = school_days,
+    holidays = holidays
+  )
+}
+
+# get a list of item, each item is a list of 2, for min x and max x for the annotation
+get_annotate_layers <- function(annotate_range, color = "red", alpha = 0.5){
+  lapply(annotate_range, \(pair){
+    annotate("rect", 
+             xmin = pair$min, xmax = pair$max,
+             ymin = -Inf, ymax = Inf,
+             fill = color, alpha = alpha)
+  })
+}
+```
+
+
+```{r}
+#| echo: true
+#| code-summary: "unadjusted forcing function"
+#| fig-width: 15
+#| fig-height: 7
+#| out-width: "100%"
+#| fig-format: png
+
+school_time <- c(0, 7, 100, 116, 200, 252, 300,308,356)
+school_open <- c(-1, 1, -1, 1,   -1,   1,   -1, 1,-1)
+
+term_pars <- list(
+  school_time = school_time, 
+  school_open = school_open,
+  school_data_dim = length(school_time),
+  beta_0 = 0.125,
+  beta_1 = 0.29,
+  gamma = 1/13,
+  b = 0.02,
+  init_S = 499900,
+  init_I = 100
+  )
+
+# format school data for generating annotation layer
+school_data <- format_schooldays(school_time, school_open)
+
+# run model and plot output
+run_mod(sir_term, term_pars, duration = 365, timestep = 1) %>% 
+  ggplot() +
+    geom_line(aes(x = t, y = I), color = "cornflowerblue") +
+  get_annotate_layers(school_data$holiday, alpha = 0.3) +
+  labs(
+    title = "Number of infectives over a year",
+    x = "Time (days)",
+    y = "Number of infectives"
+  )+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_blank(),
+        plot.subtitle = element_text(size = 18),
+        legend.text = element_text(size = 18),
+        legend.title = element_text(size = 18))
+```
+
+```{r}
+#| echo: true
+#| code-summary: "adjusted forcing function"
+#| fig-width: 15
+#| fig-height: 7
+#| out-width: "100%"
+#| fig-format: png
+
+adjust_factor <- get_adjust_factor(term_pars$beta_1, school_data)
+
+# use adjusted value for beta_0 instead
+adjusted_pars <- term_pars
+adjusted_pars$beta_0 <- adjust_factor*adjusted_pars$beta_0
+
+# run model again and plot
+run_mod(sir_term, adjusted_pars, duration = 365, timestep = 0.5) %>% 
+  ggplot() +
+    geom_line(aes(x = t, y = I), color = "cornflowerblue") +
+  get_annotate_layers(school_data$holiday, alpha = 0.3) +
+  labs(
+    title = "Number of infectives over a year",
+    x = "Time (days)",
+    y = "Number of infectives"
+  )+
+  theme(axis.title.x = element_text(size = 18),
+        axis.text.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 18),
+        plot.title = element_blank(),
+        plot.subtitle = element_text(size = 18),
+        legend.text = element_text(size = 18),
+        legend.title = element_text(size = 18))
+```
+
+
+Code materials : <https://quingzz.github.io/blog/seasonality/seasonality.html> 
