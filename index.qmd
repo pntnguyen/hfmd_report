@@ -293,26 +293,27 @@ leb_month <- c("Jan",rep("",3),"Feb",rep("",3),"Mar",rep("",4),"Apr",rep("",3),
                "Sep",rep("",3),"Oct",rep("",3),"Nov",rep("",4),"Dec",rep("",3))
 
 ts <- data.frame(wwww$wdat$date,wwww$wdat$age) %>%
-      filter(!is.na(wwww$wdat$date) & !is.na(wwww$wdat$age)) %>%
-      count(wwww$wdat$date) %>%
-      set_colnames(c("time","n")) %>% 
-      mutate(peak = c(rep("1st",36),rep("2nd",nrow(.)-36))) %>% 
-      ggplot(aes(x =time, y = n,fill = peak)) +
-      geom_bar(stat = "identity",alpha = 0.6,color="black") +
-      theme_minimal()+
-      scale_y_continuous(name = "Cases",
-                         breaks = seq(0,3000,by = 1000),
-                         limit =c(0,3000))+
-      scale_fill_manual(values = c("#582C83FF","#FFC72CFF"))+
-      labs(tag = "A")+ 
-      geom_vline(xintercept = "2023-09-06")+ 
-      theme(axis.title.x = element_blank(),
-            axis.text.x = element_blank(),
-            axis.ticks.x = element_blank(),
-            legend.position = "none",
-            plot.tag = element_text(face = "bold", size = 18),
-            axis.title.y = element_text(size = 18),
-            axis.text.y = element_text(size = 18))
+  filter(!is.na(wwww$wdat$date) & !is.na(wwww$wdat$age)) %>%
+  count(wwww$wdat$date) %>%
+  set_colnames(c("time","n")) %>% 
+  mutate(peak = c(rep("1st",36),rep("2nd",nrow(.)-36))) %>% 
+  ggplot(aes(x = time, y = n,fill = peak)) +
+  geom_col(alpha = 0.6,color="black") +
+  geom_vline(xintercept = 36.5) +
+  theme_minimal()+
+  scale_y_continuous(name = "Cases",
+                     breaks = seq(0,3000,by = 1000),
+                     limit =c(0,3000), 
+                     minor_breaks = NULL)+
+  scale_fill_manual(values = c("#582C83FF","#FFC72CFF"))+
+  labs(tag = "A")+ 
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        legend.position = "none",
+        plot.tag = element_text(face = "bold", size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.y = element_text(size = 18))
 
 hm <- ggplot(data=wwww$wdat, aes(x=date, y=age)) +
       stat_density(
@@ -324,7 +325,7 @@ hm <- ggplot(data=wwww$wdat, aes(x=date, y=age)) +
       # scale_fill_gradient(low="#040404FF", high= "#FFFE9EFF")+
       # scale_fill_distiller(palette = "Blues")+
       theme_minimal()+
-      scale_y_reverse(name = "Age",lim= rev(c(0,6)),breaks = seq(0,6))+
+      scale_y_reverse(name = "Age (years)",lim= rev(c(0,6)),breaks = seq(0,6))+
       scale_x_discrete(name = "Admission week",labels = leb_month)+
       labs(tag = "B",fill = "Density")+
       # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1,size = 8))+
@@ -347,8 +348,9 @@ hm <- ggplot(data=wwww$wdat, aes(x=date, y=age)) +
             axis.title.x = element_text(size = 18),
             axis.text.x = element_text(size = 18),
             axis.text.y = element_text(size = 18),
-            legend.text = element_text(size = 10),
-            legend.title = element_text(size = 18))
+            legend.text = element_text(size = 15),
+            legend.title = element_text(size = 18))+ 
+  guides(fill=guide_colourbar(barwidth=20,label.position="bottom")) 
 
 fi_peak <- df1 %>% filter(year(adm_date) == "2023") %>%
   filter((adm_date <= as.Date("2023-09-03")&
@@ -359,8 +361,8 @@ se_peak <- df1 %>% filter(year(adm_date) == "2023") %>%
            !is.na(adm_date) & !is.na(age1))
 
 data <- data.frame(
-  peak = c( rep("1st half",nrow(data.frame(se_peak$age1))),
-            rep("2nd half",nrow(data.frame(fi_peak$age1)))),
+  peak = c( rep("1st wave",nrow(data.frame(se_peak$age1))),
+            rep("2nd wave",nrow(data.frame(fi_peak$age1)))),
   age = c( fi_peak$age1, se_peak$age1 )
 )
 
@@ -369,7 +371,9 @@ data <- data.frame(
 ad <- ggplot(data=data, aes(x=age, group=peak, fill=peak)) +
       geom_density(alpha = 0.6) +
       scale_fill_manual(values = c("#582C83FF","#FFC72CFF")) +
-      scale_x_reverse(limit = c(6,0),breaks = seq(0,6,by=1))+
+      scale_x_reverse(limit = c(6,0),breaks = seq(0,6,by=1), 
+                      minor_breaks = NULL)+
+      scale_y_continuous(minor_breaks = NULL)+
       coord_flip()+
       theme_minimal()+
       labs(x = "Age", y ="Density",tag = "C",fill = "Outbreak")+
@@ -736,12 +740,12 @@ df23$agr <- factor(df23$agr, labels = c("[0-1)", "[1-2)", "[2-3)",
                                         "[3-4)","[4-5)","[5-6)","6+"))
 
 df23$age_gr2 <- cut(df23$age1+0.00000001, breaks = c(seq(0, 15, by = 3),82),
-                       labels = c("<0 & ≤3 years",
-                                  "<3 & ≤6 years",
-                                  "<6 & ≤9 years",
-                                  "<9 & ≤12 years",
-                                  "<12 & ≤15 years",
-                                  "16+"))
+                       labels = c("<0 & ≤3 year-old",
+                                  "<3 & ≤6 year-old",
+                                  "<6 & ≤9 year-old",
+                                  "<9 & ≤12 year-old",
+                                  "<12 & ≤15 year-old",
+                                  "16+ "))
 
 hcm19 <- census2019 %>% filter(province == "Thành phố Hồ Chí Minh")
 
@@ -757,11 +761,11 @@ hcm19$district <- hcm19$district %>%
 hcm19$age2 <- word(hcm19$age,end = 1) |> as.numeric()
 
 hcm19$age3 <- cut(hcm19$age2,breaks = c(seq(0, 15, by = 3),82),
-                     labels = c("<0 & ≤3 years",
-                                "<3 & ≤6 years",
-                                "<6 & ≤9 years",
-                                "<9 & ≤12 years",
-                                "<12 & ≤15 years",
+                     labels = c("<0 & ≤3 year-old",
+                                "<3 & ≤6 year-old",
+                                "<6 & ≤9 year-old",
+                                "<9 & ≤12 year-old",
+                                "<12 & ≤15 year-old",
                                 "16+"))
 
 pop_agegr <- hcm19 %>%
@@ -787,7 +791,7 @@ atk_rate <- df23 %>%
     )
   ) %>%
   ungroup() %>% na.omit() %>% filter(age_gr2 != "16+") %>% 
-  ggplot(aes(x = adm_week,y=log(attack_rate_ma*100000))) +
+  ggplot(aes(x = adm_week,y=log10(attack_rate_ma))) +
   # geom_bar(stat = "identity")+
   geom_line()+
   facet_wrap(vars(age_gr2),ncol = 5)+
@@ -795,15 +799,15 @@ atk_rate <- df23 %>%
                date_labels = "%b %Y", minor_breaks = NULL)+
   scale_y_continuous(minor_breaks = NULL)+
   # scale_x_date(date_breaks = "4 months",date_labels = "%b %Y")+
-  coord_cartesian(ylim = c(-2.5,9.5),xlim = as.Date(c("2022-12-01","2023-12-31")))+
+  coord_cartesian(xlim = as.Date(c("2022-12-01","2023-12-31")))+
   theme_bw()+
-  labs(x = "Admission week",y= "Log cumulative attack rate",tag = "A")+ 
+  labs(x = "Admission week",y= "Log 10 cumulative attack rate",tag = "A")+ 
   theme(axis.title.x = element_text(size = 18),
         axis.text.x = element_blank(),
         plot.tag = element_text(face = "bold", size = 18),
         axis.title.y = element_text(size = 18),
         axis.text.y = element_text(size = 18),
-        strip.text.x = element_text(size = 18))
+        strip.text.x = element_text(size = 15))
 
 
 ## sero_prevalence by age group
@@ -811,20 +815,20 @@ atk_rate <- df23 %>%
 sero <- rbind(t1222,t1223,t423,t823)
 
 sero$age_gr2 <- cut(sero$age+0.00000001, breaks = seq(0, 15, by = 3),
-                       labels = c("<0 & ≤3 years",
-                                  "<3 & ≤6 years",
-                                  "<6 & ≤9 years",
-                                  "<9 & ≤12 years",
-                                  "<12 & ≤15 years"))
+                       labels = c("<0 & ≤3 year-old",
+                                  "<3 & ≤6 year-old",
+                                  "<6 & ≤9 year-old",
+                                  "<9 & ≤12 year-old",
+                                  "<12 & ≤15 year-old"))
 
 sero$col_date <- make_date(sero$col_year,sero$col_month,sero$col_day)
 
 sero$age_gr2 <- factor(sero$age_gr2,
-                         levels = c("<0 & ≤3 years",
-                                    "<3 & ≤6 years",
-                                    "<6 & ≤9 years",
-                                    "<9 & ≤12 years",
-                                    "<12 & ≤15 years"))
+                         levels = c("<0 & ≤3 year-old",
+                                    "<3 & ≤6 year-old",
+                                    "<6 & ≤9 year-old",
+                                    "<9 & ≤12 year-old",
+                                    "<12 & ≤15 year-old"))
 
 ## observation seroprevalence
 te_sp <- sero %>% 
@@ -877,7 +881,7 @@ sp_agr <- ggplot(sero,
         plot.tag = element_text(face = "bold", size = 18),
         axis.title.y = element_text(size = 18),
         axis.text.y = element_text(size = 18),
-        strip.text.x = element_text(size = 18))
+        strip.text.x = element_text(size = 15))
 ```
 
 ```{r}
