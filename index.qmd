@@ -666,28 +666,19 @@ ggplot(data = hcm23 %>%
 
 Ideally we would like to be able to fit a binomial GAM as a function of both age and time, without any constraint on age, but imposing a monotonic increase as a function of time. Since this is not possible at the moment with the tools currently available, we propose a solution in 2 successive steps that we would ideally like them to be as so:
 
-* **Step 1:** fitting an unconstrained binomial GAM to seropositivity as a function of
-age for each time point.
-* **Step 2:** fitting a monotonically increasing beta GAM to the predictions of the
-unconstrained binomial GAM as a function of time for each age value.
+-   **Step 1:** fitting an unconstrained binomial GAM to seropositivity as a function of age for each time point.
+-   **Step 2:** fitting a monotonically increasing beta GAM to the predictions of the unconstrained binomial GAM as a function of time for each age value.
 
-Since there is currently no tool available that allows to fit a constrained beta GAM,
-we have to decompose the second step into 2 steps which consist in:
+Since there is currently no tool available that allows to fit a constrained beta GAM, we have to decompose the second step into 2 steps which consist in:
 
-* **Step 2a:** converting proportions predicted by the unconstrained binomial GAM into
-Bernoulli realizations on which to fit a monotonically increasing binomial GAM as a
-function of time for each age value from which to generate predictions with confidence
-interval.
-* **Step 2b:** smoothing out the stochasticity introduced by the conversion of the
-proportions into Bernoulli realizations by fitting unconstrained beta GAMs to the
-predictions and confidence interval bounds of the constrained binomial GAM as functions
-of age for each time point.
+-   **Step 2a:** converting proportions predicted by the unconstrained binomial GAM into Bernoulli realizations on which to fit a monotonically increasing binomial GAM as a function of time for each age value from which to generate predictions with confidence interval.
+-   **Step 2b:** smoothing out the stochasticity introduced by the conversion of the proportions into Bernoulli realizations by fitting unconstrained beta GAMs to the predictions and confidence interval bounds of the constrained binomial GAM as functions of age for each time point.
 
 #### Algorithm
 
-* **Step 1 (age profile):** for each time point (*i.e.* samples collection):
-  + fit an **unconstrained binomial GAM** to seropositivity as a function of age
-  
+-   **Step 1 (age profile):** for each time point (*i.e.* samples collection):
+    -   fit an **unconstrained binomial GAM** to seropositivity as a function of age
+
 ```{r}
 #| fig-width: 12
 #| fig-height: 6
@@ -751,15 +742,11 @@ hfmd |>
         axis.text.y = element_text(size = 18),
         strip.text.x = element_text(size = 18))
 ```
-  
-  
-  + **convert population seroprevalence into individual seropositivity realizations**:
-  for each value of a large vector of age values:
-    - generate the prediction + confidence interval
-    - from each of the rate values of the prediction and confidence interaval lower and
-    upper bounds, generate random realizations of a Bernoulli process to convert
-    population seroprevalence into individual seropositivity
-    
+
+-   **convert population seroprevalence into individual seropositivity realizations**: for each value of a large vector of age values:
+    -   generate the prediction + confidence interval
+    -   from each of the rate values of the prediction and confidence interaval lower and upper bounds, generate random realizations of a Bernoulli process to convert population seroprevalence into individual seropositivity
+
 ```{r}
 #| fig-width: 10
 #| fig-height: 8
@@ -820,13 +807,11 @@ ber <- hfmd |>
 unc_gam/
   ber
 ```
-    
-    
-* **Step 2a (epidemiological time):** for each value of age:
-  + fit a **monotonically increasing binomial GAM** to the Bernoulli realizations as a
-  function of time
-  + for each time point: generate the prediction + confidence interval
-    
+
+-   **Step 2a (epidemiological time):** for each value of age:
+    -   fit a **monotonically increasing binomial GAM** to the Bernoulli realizations as a function of time
+    -   for each time point: generate the prediction + confidence interval
+
 ```{r}
 #| fig-width: 10
 #| fig-height: 8
@@ -880,11 +865,8 @@ constr %>%
         strip.text.x = element_text(size = 18))
 
 ```
-    
-    
-* **Step 2b (smoothing out the stochasticity introduced by the seroprevalence to 
-seropositivity conversion):** for each time point fit an **unconstrained beta GAMs** to
-the predictions and confidence interval bounds of step 2a as a function of age
+
+-   **Step 2b (smoothing out the stochasticity introduced by the seroprevalence to seropositivity conversion):** for each time point fit an **unconstrained beta GAMs** to the predictions and confidence interval bounds of step 2a as a function of age
 
 ```{r}
 #| fig-width: 12
@@ -918,7 +900,7 @@ fig2a <- constr %>%
                      labels = c("Dec 2022","Apr 2023","Aug 2023","Dec 2023")),
              ncol = 4)+
   geom_ribbon(aes(ymin = lwr, ymax = upr), fill = "blue", alpha = 0.3) +
-  labs(y = "Seroprevalence (%)",x = "Age")+
+  labs(y = "Seroprevalence (%)",x = "Age (years)")+
   scale_y_continuous(labels = scales::label_percent(scale = 100),limits = c(0,1))+
   # coord_cartesian(ylim = c(0, 1))+
   theme_bw()+ 
@@ -933,7 +915,6 @@ fig2a <- constr %>%
 
 fig2a
 ```
-
 
 ```{r}
 ## case data
@@ -966,7 +947,7 @@ ts2 <- ggplot()+
     axis.title.y = element_text(size = 18))
 ```
 
-#### Final plot{.unnumbered}
+#### Final plot {.unnumbered}
 
 ```{r}
 #| fig-width: 14
@@ -1167,11 +1148,9 @@ Where:
 
 -   $\gamma$ is the recovery rate
 
-::: {.callout-note}
-
+::: callout-note
 A range of statistical approaches have revealed that transmission of childhood infections varies seasonally, peaking at the start of the school year and declining significantly in the summer months.
-
-::: 
+:::
 
 ### Sinusoidal $\beta(t)$
 
@@ -1260,11 +1239,9 @@ Plot.plot({
 })
 ```
 
-
 #### SIR model with seasonality
 
-The first systematic examination of seasonality affecting the dynamical pattern of epidemics was made, as far as we are aware, by Klaus Dietz in his seminal 1976 paper. Dietz
-carried out a stability analysis of the familiar SIR model:
+The first systematic examination of seasonality affecting the dynamical pattern of epidemics was made, as far as we are aware, by Klaus Dietz in his seminal 1976 paper. Dietz carried out a stability analysis of the familiar SIR model:
 
 $$
 \begin{cases}
@@ -1404,7 +1381,6 @@ Where $\beta(t) = \beta_0(1- \beta_1 \text{cos}(\omega t))$
 
 ::: columns
 ::: {.column width="50%"}
-
 ```{r}
 #| code-summary: "Code for SIR without seasonality forcing"
 #| echo: true
@@ -1429,7 +1405,6 @@ run_mod(sir_seasonality, no_forcing_pars, duration=150) %>%
         strip.text.x = element_text(size = 18),
         plot.title = element_text(size = 18))
 ```
-
 :::
 
 ::: {.column width="50%"}
@@ -1464,7 +1439,7 @@ In the absence of seasonal forcing, the SIR family of models exhibit a **stable 
 In this section, we will explore how parameter values can generate a variety of **dynamical patterns**
 
 ##### Harmonic and Sub-harmonic resonance {.unnumbered}
- 
+
 In the absence of seasonal forcing (i.e. $\beta_1 = 0$), the system fluctuates with frequency $F$, where.
 
 $$
@@ -1472,7 +1447,6 @@ F^2 = b(\gamma + b)(R_0  - 1) - (\frac{b R_0}{2})^2
 $$
 
 These oscillations are hereby referred to as the natural oscillations.
-
 
 When the natural period of oscillations is approximately the same as seasonal forcing period (i.e., $F \approx \omega$ ) we observe **harmonic resonance**
 
@@ -1496,7 +1470,6 @@ get_f_val <- function(params, R_0=NULL){
 
 ::: columns
 ::: {.column width="50%"}
-
 ```{r}
 #| code-summary: "harmonic resonance"
 #| echo: true
@@ -1520,10 +1493,9 @@ run_mod(sir_seasonality, harmonic_pars, duration=150) %>%
         strip.text.x = element_text(size = 18),
         plot.title = element_text(size = 18))
 ```
-
 :::
-::: {.column width="50%"}
 
+::: {.column width="50%"}
 ```{r}
 #| code-summary: "sub-harmonic resonance"
 #| echo: true
@@ -1548,14 +1520,12 @@ run_mod(sir_seasonality, sub_harmonic_pars, duration=150) %>%
         plot.title = element_text(size = 18))
   
 ```
-
 :::
 :::
 
 **Changes in** $\beta_1$ **and** $R_0$ can also lead to qualitatively different epidemic patterns.
 
 ##### $\beta_{1}$ {.unnumbered}
-
 
 ```{r}
 #| echo: true
@@ -1824,9 +1794,9 @@ harmonic_out %>%
         legend.title = element_text(size = 18))
 ```
 
-- The peak in disease incidence coincides with the point at which the fraction of susceptibles $\frac{S}{N}$ falls below $\frac{\gamma}{\beta(t)}$. 
+-   The peak in disease incidence coincides with the point at which the fraction of susceptibles $\frac{S}{N}$ falls below $\frac{\gamma}{\beta(t)}$.
 
-- Once $S > \frac{\gamma}{\beta(t)}$ disease incidence rises. This pattern is repeated once transmission has depleted susceptibles below the threshold 
+-   Once $S > \frac{\gamma}{\beta(t)}$ disease incidence rises. This pattern is repeated once transmission has depleted susceptibles below the threshold
 
 ```{r}
 #| echo: true
@@ -1883,17 +1853,17 @@ sub_harmonic_out %>%
         legend.title = element_text(size = 18))
 ```
 
-- For a slightly higher amplitude of seasonality ($\omega = 2F$) the picture changes in important ways
+-   For a slightly higher amplitude of seasonality ($\omega = 2F$) the picture changes in important ways
 
-- In this instance, however, the peak in the infectives is substantially larger than in the previous graph (due to the greater transmission rate $\omega = 2F$)
+-   In this instance, however, the peak in the infectives is substantially larger than in the previous graph (due to the greater transmission rate $\omega = 2F$)
 
-- While at this point $S > \frac{\gamma}{\beta(t)}$, the transmission rate is very near its annual maximum (the threshold is near its minimum), and as a result the susceptibles do not remain above the threshold long enough to produce a large epidemic. It is only when the level of susceptibles exceeds the threshold for a second time that a large epidemic begins
+-   While at this point $S > \frac{\gamma}{\beta(t)}$, the transmission rate is very near its annual maximum (the threshold is near its minimum), and as a result the susceptibles do not remain above the threshold long enough to produce a large epidemic. It is only when the level of susceptibles exceeds the threshold for a second time that a large epidemic begins
 
 ::: {.callout-note title="Conclusion"}
-In this instance, the seasonal changes in the transmission rate are intimately associated with the dynamics of susceptibles 
+In this instance, the seasonal changes in the transmission rate are intimately associated with the dynamics of susceptibles
 :::
 
-## Forcing function 
+## Forcing function
 
 We've explored seasonality by assuming that the transmission rate is time dependent and specifically is determined by a simple sinusoidal function, this view has changed in recent years:
 
@@ -2087,7 +2057,6 @@ get_annotate_layers <- function(annotate_range, color = "red", alpha = 0.5){
 }
 ```
 
-
 ```{r}
 #| echo: true
 #| code-summary: "unadjusted forcing function"
@@ -2170,5 +2139,4 @@ run_mod(sir_term, adjusted_pars, duration = 365, timestep = 0.5) %>%
         legend.title = element_text(size = 18))
 ```
 
-
-Code materials : <https://quingzz.github.io/blog/seasonality/seasonality.html> 
+Code materials : <https://quingzz.github.io/blog/seasonality/seasonality.html>
