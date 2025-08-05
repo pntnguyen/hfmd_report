@@ -1975,3 +1975,12 @@ run_mod(sir_term, adjusted_pars, duration = 365, timestep = 0.5) %>%
 ```
 
 Code materials : <https://quingzz.github.io/blog/seasonality/seasonality.html>
+
+## Next step
+
+- Publication: What we can and cannot observe from serosurveillance compared to case notification data.
+
+- Serological Analysis: Estimate attack rates using serological samples; compare these with hospitalisation incidence to calculate the probability of hospitalisation upon infection as a function of age.
+
+- Modeling: Identify the timeline of summer breaks from 2013 to 2023 to apply the temporal force of infection model and explore transmission dynamics.
+
