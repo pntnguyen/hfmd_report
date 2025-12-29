@@ -713,7 +713,7 @@ df_cases |>
          check = onset_date > reported_date & day(onset_date) == month(reported_date)) |>
   mutate(
     onset_date = case_when(
-      check = TRUE & delay_adm2 >= 0 ~ onset_date2,
+      check == TRUE & delay_adm2 >= 0 ~ onset_date2,
       .default = onset_date),
   ) |> 
   filter(check == TRUE) |>
@@ -732,7 +732,7 @@ df_cases <- df_cases |>
          check = onset_date > reported_date & day(onset_date) == month(reported_date)) |>
   mutate(
     onset_date = case_when(
-      check = TRUE & delay_adm2 >= 0 ~ onset_date2,
+      check == TRUE & delay_adm2 >= 0 ~ onset_date2,
       .default = onset_date),
   ) |> 
   select(-c(delay_adm,onset_date2,delay_adm2,check)) 
@@ -763,7 +763,7 @@ df_cases |>
          check = admission_date > reported_date & day(admission_date) == month(reported_date)) |>
   mutate(
     admission_date = case_when(
-      check = TRUE & delay2 >= 0 ~ admission_date2,
+      check == TRUE & delay2 >= 0 ~ admission_date2,
       .default = admission_date),
   ) |> 
   filter(check == TRUE) |>
@@ -780,8 +780,6 @@ as you can see the admission was updated
 Merge
 
 ```{r}
-
-
 df_cases <- df_cases |> 
   mutate(delay = reported_date - admission_date,
          admission_date2 = ydm(admission_date),
@@ -789,7 +787,7 @@ df_cases <- df_cases |>
          check = admission_date > reported_date & day(admission_date) == month(reported_date)) |>
   mutate(
     admission_date = case_when(
-      check = TRUE & delay2 >= 0 ~ admission_date2,
+      check == TRUE & delay2 >= 0 ~ admission_date2,
       .default = admission_date)
   ) |> 
   select(-c(delay,admission_date2,delay2,check)) 
@@ -840,7 +838,7 @@ df_cases |>
          check = month(admission_date) == day(reported_date) & delay > 30) |>
   mutate(
     reported_date = case_when(
-      check = TRUE & delay2 < 30 ~ reported_date2,
+      check == TRUE & delay2 < 30 ~ reported_date2,
       .default = reported_date)
   ) |> 
   filter(check == TRUE & delay2 < 30) |> 
@@ -858,7 +856,7 @@ df_cases <- df_cases |>
          check = month(admission_date) == day(reported_date) & delay > 30) |>
   mutate(
     reported_date = case_when(
-      check = TRUE & delay2 < 30 ~ reported_date2,
+      check == TRUE & delay2 < 30 ~ reported_date2,
       .default = reported_date)
   ) |> 
   select(-c(delay,reported_date2,delay2,check))
