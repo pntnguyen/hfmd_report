@@ -943,6 +943,24 @@ df_cases %<>%
     )
 ```
 
+## Gender
+
+```{r}
+df_cases |> 
+  pull(gender) |> 
+  unique()
+```
+
+
+```{r}
+df_cases %<>%
+  mutate(
+    gender = case_when(
+      gender %in% c("Nữ","nữ","NỮ") ~ "Female",
+      .default = "Male")
+    )
+```
+
 # Summary
 
   - Based on the description, we can see that the reported date is currently the most biased, with more than 30,000 cases reported on March 9, 2018. Therefore, we need to discuss the reported date with HCDC, and if necessary, we may exclude this variable from the model.
